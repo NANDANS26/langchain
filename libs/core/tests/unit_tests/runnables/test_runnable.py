@@ -6010,3 +6010,48 @@ def test_runnable_sequence_v1_output_schema_with_pick() -> None:
     schema = sequence.get_output_jsonschema()
     assert set(schema["properties"]) == {"a"}
     assert "a" in schema["required"]
+
+
+async def test_atransform_stream_with_config_setup_failure_propagates_original_error(
+    mocker: MockerFixture,
+) -> None:
+    """Ensure setup errors prior to iterator creation are not masked."""
+    mocker.patch(
+        "langchain_core.runnables.base.accepts_config",
+        side_effect=ValueError("setup error"),
+    )
+    chain = RunnableLambda(lambda x: x)
+
+    with pytest.raises(ValueError, match="setup error"):
+        _ = [_ async for _ in chain.astream("test")]
+
+
+async def test_runnable_sequence_astream_exception_propagation() -> None:
+    """Ensure exceptions raised in sequence steps propagate from astream."""
+
+    def boom(_: Any) -> Any:
+        msg = "step error"
+        raise ValueError(msg)
+
+    chain = RunnableLambda(lambda x: x) | RunnableLambda(boom)
+
+    with pytest.raises(ValueError, match="step error"):
+        _ = [_ async for _ in chain.astream("test")]
+
+
+async def test_runnable_generator_astream_midstream_exception() -> None:
+    """Ensure mid-stream exceptions in async generator propagate properly."""
+    yielded = []
+
+    async def agen(_: AsyncIterator[Any]) -> AsyncIterator[str]:
+        yielded.append("chunk1")
+        yield "chunk1"
+        msg = "midstream error"
+        raise ValueError(msg)
+
+    runnable = RunnableGenerator(agen)
+
+    with pytest.raises(ValueError, match="midstream error"):
+        _ = [chunk async for chunk in runnable.astream("test")]
+
+    assert yielded == ["chunk1"]

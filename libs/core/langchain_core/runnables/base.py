@@ -2642,6 +2642,7 @@ class Runnable(ABC, Generic[Input, Output]):
             run_id=config.pop("run_id", None),
             defers_inputs=defers_inputs,
         )
+        iterator_: AsyncIterator[Output] | None = None
         try:
             child_config = patch_config(config, callbacks=run_manager.get_child())
             if accepts_config(transformer):
